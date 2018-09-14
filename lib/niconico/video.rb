@@ -88,20 +88,20 @@ class Niconico
 
     def req_protocol
       {
-         "name" => "http",
-         "parameters" => {
-           "http_parameters" => {
-           "method" => "GET",
-           "parameters" => {
-             "http_output_download_parameters" => {
-             "file_extention" => "",
-             "use_well_known_port" => "yes",
-             "use_ssl" => "yes",
-             "transfer_preset" => "standard2",
-           },
-           },
-         },
-         },
+        "name" => "http",
+        "parameters" => {
+          "http_parameters" => {
+            "method" => "GET",
+            "parameters" => {
+              "http_output_download_parameters" => {
+                "file_extention" => "",
+                "use_well_known_port" => "yes",
+                "use_ssl" => "yes",
+                "transfer_preset" => "standard2",
+              },
+            },
+          },
+        },
       }
     end
 
