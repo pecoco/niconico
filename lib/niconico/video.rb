@@ -105,7 +105,7 @@ class Niconico
       }
     end
 
-    def get_html5(watch_data)
+    def create_dmc_session(watch_data)
       @watch_data = JSON.parse(watch_data.attribute("data-api-data"))
       dmc_info = @watch_data["video"]["dmcInfo"]
       @session_api = dmc_info["session_api"]
@@ -172,7 +172,7 @@ class Niconico
       end
 
       if watch_data = @page.at("div#js-initial-watch-data")
-        get_html5(watch_data)
+        create_dmc_session(watch_data)
       else
         raise "not found div#js-initial-watch-data"
       end
