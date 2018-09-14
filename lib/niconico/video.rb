@@ -33,6 +33,136 @@ class Niconico
 
     def economy?; @eco; end
 
+    def post_heart_beat
+      req = {
+              "session" => {
+                "id" => @dmc_session["id"],
+                "recipe_id" => @token["recipe_id"],
+                "content_id" => @token["content_ids"].first,
+                "content_src_id_sets" => [
+                  {
+                    "content_src_ids" => [
+                      {
+                        "src_id_to_mux" => {
+                          "video_src_ids" => [@video_src],
+                          "audio_src_ids" => [@audio_src],
+                        },
+                      },
+                    ],
+                    "allow_subset" => "yes",
+                  },
+                ],
+                "content_type" => "movie",
+                "timing_constraint" => "unlimited",
+                "keep_method": {
+                  "heartbeat": {
+                    "lifetime": 120000,
+                    "onetime_token": "",
+                    "deletion_timeout_on_no_stream": 0
+                  },
+                },
+                "protocol" => req_protocol(),
+                "play_seek_time" => 0,
+                "play_speed" => 1,
+                "play_control_range" => {
+                  "max_play_speed" => 1,
+                  "min_play_speed" => 1,
+                },
+                "content_uri" => @video_url,
+                "session_operation_auth" => @dmc_session["session_operation_auth"],
+                "content_auth" => @dmc_session["content_auth"],
+                "runtime_info" => @dmc_session["runtime_info"],
+                "client_info" => @dmc_session["client_info"],
+                "created_time" => @dmc_session["created_time"],
+                "modified_time" => @dmc_session["modified_time"],
+                "priority" => @dmc_session["priority"],
+                "content_route" => @dmc_session["content_route"],
+                "version" => @dmc_session["version"],
+                "content_status" => @dmc_session["content_status"],
+              },
+            }
+      #puts req.to_json
+      api_url = "#{@session_api["urls"].first["url"]}/#{@dmc_session["id"]}?_format=json&_method=PUT"
+      @agent.post(api_url, req.to_json, {'Content-Type' => 'application/json'})
+    end
+
+    def req_protocol
+      {
+         "name" => "http",
+         "parameters" => {
+           "http_parameters" => {
+           "method" => "GET",
+           "parameters" => {
+             "http_output_download_parameters" => {
+             "file_extention" => "",
+             "use_well_known_port" => "yes",
+             "use_ssl" => "yes",
+             "transfer_preset" => "standard2",
+           },
+           },
+         },
+         },
+      }
+    end
+
+    def get_html5(watch_data)
+      @watch_data = JSON.parse(watch_data.attribute("data-api-data"))
+      dmc_info = @watch_data["video"]["dmcInfo"]
+      @session_api = dmc_info["session_api"]
+      token_text = @session_api["token"]
+      @token = JSON.parse(token_text)
+
+      @video_src = @token["videos"].first
+      @audio_src = @token["audios"].first
+      req = {
+              "session" => {
+                "recipe_id" => @token["recipe_id"],
+                "content_id" => @token["content_ids"].first,
+                "content_type" => "movie",
+                "content_src_id_sets" => [
+                  {
+                    "content_src_ids" => [
+                      "src_id_to_mux" => {
+                        "video_src_ids" => [@video_src],
+                        "audio_src_ids" => [@audio_src],
+                      },
+                    ],
+                  },
+                ],
+                "timing_constraint" => "unlimited",
+                "keep_method" => {
+                  "heartbeat" => {
+                    "lifetime" => @token["heartbeat_lifetime"],
+                  },
+                },
+                "protocol" => req_protocol(),
+                "content_uri" => "",
+                "session_operation_auth" => {
+                  "session_operation_auth_by_signature" => {
+                    "token" => token_text,
+                    "signature" => @session_api["signature"],
+                  },
+                },
+                "content_auth" => {
+                  "auth_type" => "ht2",
+                  "content_key_timeout" => @token["content_key_timeout"],
+                  "service_id" => @token["service_id"],
+                  "service_user_id" => @token["service_user_id"],
+                },
+                "client_info" => {
+                  "player_id" => @token["player_id"],
+                },
+                "priority" => @token["priority"],
+              },
+            }
+
+      api_url = "#{@session_api["urls"].first["url"]}?_format=json"
+      page = @agent.post(api_url, req.to_json, {'Content-Type' => 'application/json'})
+      dmc = JSON.parse(page.body)
+      @dmc_session = dmc["data"]["session"]
+      @video_url = @dmc_session["content_uri"]
+    end
+
     def get(options = {})
       begin
         @page = @agent.get(@url)
@@ -41,15 +171,11 @@ class Niconico
         raise e
       end
 
-      if /^so/ =~ @id
-        sleep 5
-        @thread_id = @agent.get("#{Niconico::URL[:watch]}#{@id}").uri.path.sub(/^\/watch\//,"")
+      if watch_data = @page.at("div#js-initial-watch-data")
+        get_html5(watch_data)
+      else
+        raise "not found div#js-initial-watch-data"
       end
-      additional_params = nil
-      if /^nm/ === @id && (!options.key?(:as3) || options[:as3])
-        additional_params = "&as3=1"
-      end
-      getflv = Hash[@agent.get_file("#{Niconico::URL[:getflv]}?v=#{@thread_id}#{additional_params}").scan(/([^&]+)=([^&]+)/).map{|(k,v)| [k.to_sym,CGI.unescape(v)] }]
 
       if api_data_node = @page.at("#watchAPIDataContainer")
         @api_data = JSON.parse(api_data_node.text())
@@ -64,15 +190,7 @@ class Niconico
       d = @page.at("div#videoComment>div.videoDescription")
       @description ||= d.inner_html unless d.nil?
 
-      @video_url = getflv[:url]
-      if @video_url
-        @eco = !(/low$/ =~ @video_url).nil?
-        @type = case @video_url.match(/^http:\/\/(.+\.)?nicovideo\.jp\/smile\?(.+?)=.*$/).to_a[2]
-                when 'm'; :mp4
-                when 's'; :swf
-                else;     :flv
-                end
-      end
+      @type = :mp4
       @tags ||= @page.search("#video_tags a[rel=tag]").map(&:inner_text)
       @mylist_comment ||= nil
 
@@ -86,16 +204,34 @@ class Niconico
 
     def get_video
       raise VideoUnavailableError unless available?
-      raise UnsupportedVideoError if video_url !~ /^http/
+
       unless block_given?
-          @agent.get_file(video_url)
+        raise "no support, need yield block"
       else
-        cookies = video_cookies.map(&:to_s).join(';')
-        uri = URI(video_url)
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.request_get(uri.request_uri, 'Cookie' => cookies) do |res|
-          res.read_body do |body|
-            yield body
+
+        offset = 0
+        while true do
+          begin
+            # ハートビートしてても切れるのでResumeしながら落とす必要がある。
+            post_heart_beat()
+
+            terminate = offset + 9999999
+            range = "bytes=#{offset}-#{terminate}"
+            page = @agent.get(video_url, [], nil, { "Range" => range })
+            bin = page.body.bytes
+
+            # p page.response
+
+            if page.response["content-length"].to_i != 10000000
+              yield bin.pack('C*')
+              break
+            end
+
+            offset = offset + bin.size
+            yield bin.pack('C*')
+          rescue Mechanize::ResponseReadError => e
+            # continue
+            sleep 10
           end
         end
       end
