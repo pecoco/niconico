@@ -210,7 +210,8 @@ class Niconico
       raise VideoUnavailableError unless available?
 
       unless block_given?
-        raise "no support, need yield block"
+        warn "full request is memory use too much. please use yield block."
+        raise UnsupportedFullRequest
       else
 
         offset = 0
@@ -280,6 +281,7 @@ class Niconico
       "#<Niconico::Video: #{@id}.#{@type} \"#{@title}\"#{@eco ? " low":""}#{(fetched? && !@video_url) ? ' (unavailable)' : ''}#{fetched? ? '' : ' (defered)'}>"
     end
 
+    class UnsupportedFullRequest < StandardError; end
     class FailedCreateSession < StandardError; end
     class NotFound < StandardError; end
     class VideoUnavailableError < StandardError; end
