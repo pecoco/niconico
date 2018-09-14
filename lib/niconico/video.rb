@@ -109,7 +109,11 @@ class Niconico
       @watch_data = JSON.parse(watch_data.attribute("data-api-data"))
       dmc_info = @watch_data["video"]["dmcInfo"]
       @session_api = dmc_info["session_api"]
+      unless @session_api
+        raise FailedCreateSession
+      end
       token_text = @session_api["token"]
+
       @token = JSON.parse(token_text)
 
       @video_src = @token["videos"].first
@@ -229,6 +233,8 @@ class Niconico
 
             offset = offset + bin.size
             yield bin.pack('C*')
+          rescue Niconico::Video::FailedCreateSession => e
+            raise e
           rescue Mechanize::ResponseReadError => e
             # continue
             sleep 10
@@ -274,6 +280,7 @@ class Niconico
       "#<Niconico::Video: #{@id}.#{@type} \"#{@title}\"#{@eco ? " low":""}#{(fetched? && !@video_url) ? ' (unavailable)' : ''}#{fetched? ? '' : ' (defered)'}>"
     end
 
+    class FailedCreateSession < StandardError; end
     class NotFound < StandardError; end
     class VideoUnavailableError < StandardError; end
     class UnsupportedVideoError < StandardError; end
